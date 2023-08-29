@@ -1,0 +1,71 @@
+name: Chocolatine
+
+on:
+  push:
+    branches:
+      - main
+      - '!ga-ignore-*'
+  pull_request:
+    branches:
+      - main
+      - '!ga-ignore-*'
+
+jobs:
+  compilation_check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v2
+
+    - name: compilation-make
+      run: make
+
+    - name: Execute some task
+      run: echo "Executing task for job1"
+
+  coding_style_check:
+    needs: compilation_check
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/epitech/coding-style-checker:latest
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v2
+
+    - name: Execute Coding Style
+      run: check.sh $(pwd) $(pwd) > coding-style-reports.log
+
+    - name: Check coding style and create annotations
+      run: |
+        cat coding-style-reports.log | while read line; do
+          file=$(echo $line | awk -F: '{print $1}')
+          line_number=$(echo $line | awk -F: '{print $2}')
+          error_message=$(echo $line | awk -F: '{print $3}')
+          echo "::error file=$file,line=$line_number::${error_message}"
+        done
+
+    - name: Fail the job if there are coding style errors
+      run: |
+        if grep -q . coding-style-reports.log; then
+          echo "Coding style errors detected."
+          exit 1
+        else
+          echo "No coding style errors found."
+        fi
+
+  push_repo_mirror:
+    needs: coding_style_check
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v2
+      
+      - name: Push to mirror
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ secrets.MIRROR_REPO }}
+          branch: ${{ github.ref }}
+          force: true
